@@ -1,0 +1,112 @@
+image:
+  file: .gitpod.dockerfile
+
+
+tasks:
+
+  ###############################################################
+  # Terminal 1 (triggers preview as soon as service is available)
+  # will auto close when finished
+  ###############################################################
+  
+  - name: start preview
+  
+    command: >
+      gp await-port 3000 && sleep 8 && gp preview $(gp url 3000) &&
+      exit
+
+
+
+  #######################################################
+  # Terminal 2 (Neo4j Database will run in this terminal)
+  #######################################################
+
+  - name: neo4j
+    
+    # copy .env
+    init: >
+      cd /workspace/Human-Connection/neo4j &&
+      cp .env.template .env
+      
+      
+
+    # Start neo4j and seed database if not already happened
+    command: >
+      neo4j start &&
+      sleep 20 &&
+      cd /workspace/Human-Connection/ &&
+      sleep 1 && while ! [ -f /workspace/.backend_deps_installed ]; do sleep 1; echo "Waiting for backend dependencies to be fully installed..."; done &&
+      if [ -f /workspace/neo4j-data/.database_seeded ];
+        then echo "Database already seeded..."
+        else
+          echo "CALL dbms.security.changePassword('${NEO4J_PASSWORD}');" | cypher-shell -u neo4j -p neo4j
+          cd /workspace/Human-Connection/neo4j
+          ./db_setup.sh 
+          yarn run db:seed
+          touch /workspace/neo4j-data/.database_seeded
+      fi
+        
+
+  #################################################
+  # Terminal 3 (backend will run in this terminal.)
+  #################################################
+
+    # install dependencies of backend
+  - name: backend
+
+    init: >
+      cd /workspace/Human-Connection/backend &&
+      sleep 1 && while [ -f /tmp/.yarn-lock ]; do sleep 1; echo "Waiting for frontend yarn process to finish..."; done &&
+      touch /tmp/.yarn-lock &&
+      yarn install &&
+      rm /tmp/.yarn-lock &&
+      cp .env.template .env &&
+      touch /workspace/.backend_deps_installed
+          
+      
+    # Start backend
+    command: >
+      sleep 10 &&
+      cd /workspace/Human-Connection/backend &&
+      yarn run dev
+
+
+  #################################################
+  # Terminal 4 (frontend will run in this terminal)
+  #################################################
+
+  - name: webapp
+
+    init: >
+      cd /workspace/Human-Connection/webapp &&
+      sleep 1 && while [ -f /tmp/.yarn-lock ]; do sleep 1; echo "Waiting for backend yarn process to finish..."; done &&
+      touch /tmp/.yarn-lock &&
+      yarn install &&
+      rm /tmp/.yarn-lock &&
+      cp .env.template .env &&
+      cd /workspace/Human-Connection &&
+      cp cypress.env.template.json cypress.env.json
+
+    # Start webapp
+    command: >
+      cd /workspace/Human-Connection/webapp &&
+      yarn dev
+
+
+      
+ports:
+  - port: 4000
+  - port: 3000
+  - port: 7687
+  - port: 7473
+    onOpen: ignore
+  - port: 7474
+    onOpen: ignore
+
+
+    
+vscode:
+  extensions:
+    - jcbuisson.vue@0.1.5:iY3UUCX2mmoIw5ODWkEcyw==
+
+    
